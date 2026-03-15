@@ -125,8 +125,8 @@ async function findInfoTableXml(baseUrl: string): Promise<string> {
 function parseInformationTable(xml: string): RawPosition[] {
   const positions: RawPosition[] = []
 
-  // Extract all <infoTable> blocks
-  const blocks = xml.match(/<infoTable>[\s\S]*?<\/infoTable>/gi) || []
+  // Extract all <infoTable> blocks — handle both plain and namespace-prefixed tags (e.g. <ns1:infoTable>)
+  const blocks = xml.match(/<(?:\w+:)?infoTable[\s\S]*?<\/(?:\w+:)?infoTable>/gi) || []
 
   for (const block of blocks) {
     const nameOfIssuer = extractTag(block, 'nameOfIssuer') || extractTag(block, 'NAMEOFISSUER') || ''
@@ -162,6 +162,7 @@ function parseInformationTable(xml: string): RawPosition[] {
 }
 
 function extractTag(xml: string, tag: string): string | null {
-  const match = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)<\/${tag}>`, 'i'))
+  // Match both plain <tag> and namespace-prefixed <ns:tag>
+  const match = xml.match(new RegExp(`<(?:\\w+:)?${tag}[^>]*>([^<]*)<\\/(?:\\w+:)?${tag}>`, 'i'))
   return match ? match[1].trim() : null
 }

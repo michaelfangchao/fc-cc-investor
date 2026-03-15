@@ -7,15 +7,15 @@ export async function cusipsToTickers(cusips: string[]): Promise<Map<string, str
   const result = new Map<string, string>()
   if (cusips.length === 0) return result
 
-  // Batch in groups of 100 (OpenFIGI limit)
-  for (let i = 0; i < cusips.length; i += 100) {
-    const batch = cusips.slice(i, i + 100)
-    const body = batch.map(cusip => ({ idType: 'ID_CUSIP', idValue: cusip, exchCode: 'US' }))
+  // Batch in groups of 10 (OpenFIGI limit without API key)
+  for (let i = 0; i < cusips.length; i += 10) {
+    const batch = cusips.slice(i, i + 10)
+    const body = batch.map(cusip => ({ idType: 'ID_CUSIP', idValue: cusip }))
 
     try {
       const res = await fetch(OPENFIGI_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -35,8 +35,8 @@ export async function cusipsToTickers(cusips: string[]): Promise<Map<string, str
       console.error('OpenFIGI batch failed:', err)
     }
 
-    // Rate limit between batches
-    if (i + 100 < cusips.length) await new Promise(r => setTimeout(r, 500))
+    // Rate limit between batches (OpenFIGI free tier: ~25 req/min)
+    await new Promise(r => setTimeout(r, 300))
   }
 
   return result
