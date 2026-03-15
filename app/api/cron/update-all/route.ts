@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       // Compute position changes vs previous quarter
       const allFilings = await db.select().from(filings).where(eq(filings.investor_id, investor.id))
       const prevFiling = allFilings
-        .filter(f => f.period !== latest.period)
+        .filter(f => f.period < latest.period)
         .sort((a, b) => b.period.localeCompare(a.period))[0]
 
       const prevPositions = prevFiling

@@ -140,7 +140,7 @@ async function computeChanges(
     .where(eq(filings.investor_id, investorId))
 
   const prevFiling = allFilings
-    .filter(f => f.period !== currentQuarter)
+    .filter(f => f.period < currentQuarter)
     .sort((a, b) => b.period.localeCompare(a.period))[0]
 
   const prevPositions = prevFiling
