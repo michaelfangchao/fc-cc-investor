@@ -8,7 +8,8 @@ export const COLORS_BY_CIK: Record<string, { bg: string; light: string; text: st
   '0001697748': { bg: '#f97316', light: '#fff7ed', text: '#c2410c', border: '#fed7aa' }, // ARK      – orange
   '0001709323': { bg: '#a855f7', light: '#faf5ff', text: '#7e22ce', border: '#d8b4fe' }, // Li Lu    – purple
   '0001759760': { bg: '#22c55e', light: '#f0fdf4', text: '#15803d', border: '#86efac' }, // Duan     – green
-  '0001419050': { bg: '#ef4444', light: '#fef2f2', text: '#b91c1c', border: '#fca5a5' }, // Norbert  – red
+  '0001419050': { bg: '#ef4444', light: '#fef2f2', text: '#b91c1c', border: '#fca5a5' }, // Norbert (old)
+  '0001631664': { bg: '#ef4444', light: '#fef2f2', text: '#b91c1c', border: '#fca5a5' }, // Norbert  – red
 }
 export const DEFAULT_COLOR = { bg: '#6b7280', light: '#f9fafb', text: '#374151', border: '#d1d5db' }
 
