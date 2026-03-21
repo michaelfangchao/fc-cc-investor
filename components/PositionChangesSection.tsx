@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { CHANGE_META, ChangeType, formatValue, COLORS_BY_CIK, DEFAULT_COLOR } from '@/lib/db/queries'
+import { CHANGE_META, ChangeType, formatValue, COLORS_BY_CIK, DEFAULT_COLOR } from '@/lib/ui-constants'
 
 type Change = {
   id: number
