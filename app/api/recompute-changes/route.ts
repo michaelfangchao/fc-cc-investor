@@ -3,10 +3,19 @@
 // Used to fix cases where computeChanges failed but the filing was already inserted
 import { NextRequest, NextResponse } from 'next/server'
 import { db, investors, filings, positions, position_changes } from '@/lib/db'
-import { eq, inArray, and } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 
+function isAuthorized(req: NextRequest): boolean {
+  const auth = req.headers.get('authorization')
+  const secret = process.env.CRON_SECRET
+  return !!secret && auth === `Bearer ${secret}`
+}
+
 export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { quarter } = await req.json().catch(() => ({}))
 
   const allInvestors = await db.select().from(investors)

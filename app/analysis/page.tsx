@@ -30,8 +30,9 @@ export default function AnalysisPage() {
       setResults(data)
     } catch {
       setResults({ ticker: upper, holdings: [] })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   function handleSearch(e: React.FormEvent) {
