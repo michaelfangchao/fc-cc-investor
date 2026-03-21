@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { CHANGE_META, formatValue, formatShares, quarterLabel, ChangeType } from '@/lib/db/queries'
+import { CHANGE_META, formatValue, formatShares, quarterLabel, ChangeType } from '@/lib/ui-constants'
 
 type Color = { bg: string; light: string; text: string; border: string }
 

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { COLORS_BY_CIK, DEFAULT_COLOR } from '@/lib/db/queries'
+import { COLORS_BY_CIK, DEFAULT_COLOR } from '@/lib/ui-constants'
 
 type InvestorNav = { id: number; name_cn: string; cik: string }
 
