@@ -4,9 +4,11 @@
 const EDGAR_BASE = 'https://data.sec.gov'
 const EDGAR_ARCHIVE = 'https://www.sec.gov/Archives/edgar/data'
 
-// EDGAR_EMAIL must be set — placeholder violates SEC policy
-if (!process.env.EDGAR_EMAIL) throw new Error('EDGAR_EMAIL env var is required')
-const USER_AGENT = `fc-cc-investor ${process.env.EDGAR_EMAIL}`
+// EDGAR_EMAIL must be set at request time — validated lazily to avoid build-time errors
+function getUserAgent(): string {
+  if (!process.env.EDGAR_EMAIL) throw new Error('EDGAR_EMAIL env var is required')
+  return `fc-cc-investor ${process.env.EDGAR_EMAIL}`
+}
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -16,7 +18,7 @@ async function edgarFetch(url: string, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     await sleep(150) // respect EDGAR rate limit
     const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, 'Accept': 'application/json' }
+      headers: { 'User-Agent': getUserAgent(), 'Accept': 'application/json' }
     })
     if (res.status === 429) {
       await sleep(2000)
@@ -102,7 +104,7 @@ async function findInfoTableXml(baseUrl: string): Promise<string> {
   try {
     // Fetch the directory listing HTML
     const res = await fetch(baseUrl + '/', {
-      headers: { 'User-Agent': USER_AGENT }
+      headers: { 'User-Agent': getUserAgent() }
     })
     if (!res.ok) return 'informationTable.xml'
     const html = await res.text()
