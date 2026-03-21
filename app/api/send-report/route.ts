@@ -1,15 +1,14 @@
 // POST /api/send-report — generate Claude digest + send weekly email via Resend
 // Called by Vercel Cron at 0 11 * * 1 (one hour after update-all)
 import { NextRequest, NextResponse } from 'next/server'
-import { db, investors, filings, stocks, position_changes } from '@/lib/db'
-import { eq, gte } from 'drizzle-orm'
+import { db, investors, filings, stocks, positions, position_changes } from '@/lib/db'
+import { eq, and, desc } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { render } from '@react-email/render'
 import { WeeklyReport, type InvestorUpdate } from '@/lib/email'
 import { generateText } from '@/lib/claude'
 import { emailDigestPrompt } from '@/lib/prompts'
 import { isAuthorized } from '@/lib/auth'
-import { quarterLabel } from '@/lib/ui-constants'
 
 export const maxDuration = 60
 
@@ -23,57 +22,73 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'REPORT_EMAIL env var not set' }, { status: 500 })
   }
 
-  // Find filings created in the last 7 days
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  const recentFilings = await db.select().from(filings)
-    .where(gte(filings.created_at, oneWeekAgo))
-
-  if (recentFilings.length === 0) {
-    return NextResponse.json({ sent: false, reason: 'No new filings this week' })
+  const allInvestors = await db.select().from(investors)
+  if (allInvestors.length === 0) {
+    return NextResponse.json({ sent: false, reason: 'No investors tracked' })
   }
 
-  const allInvestors = await db.select().from(investors)
-  const investorMap = new Map(allInvestors.map(i => [i.id, i]))
+  // Find the latest quarter across all investors' filings
+  const latestFiling = await db.select({ period: filings.period })
+    .from(filings)
+    .orderBy(desc(filings.period))
+    .limit(1)
 
+  if (latestFiling.length === 0) {
+    return NextResponse.json({ sent: false, reason: 'No filings found' })
+  }
+
+  const latestQuarter = latestFiling[0].period  // e.g. "2025Q4"
+
+  // For each investor, get position_changes for the latest quarter only
   const updates: InvestorUpdate[] = []
-  let latestQuarter = ''
 
-  for (const filing of recentFilings) {
-    const investor = investorMap.get(filing.investor_id)
-    if (!investor) continue
-    if (filing.period > latestQuarter) latestQuarter = filing.period
+  for (const investor of allInvestors) {
+    // Get the filing for this investor for the latest quarter
+    const [filing] = await db.select()
+      .from(filings)
+      .where(and(eq(filings.investor_id, investor.id), eq(filings.period, latestQuarter)))
 
+    if (!filing) continue  // investor has no data for this quarter
+
+    // Get position_changes for this investor in the latest quarter only
     const changes = await db.select({
       change_type: position_changes.change_type,
       pct_change: position_changes.pct_change,
       curr_shares: position_changes.curr_shares,
       ticker: stocks.ticker,
       name_en: stocks.name_en,
-      // value not stored on position_changes — approximate from curr_shares (ok for email)
+      value_usd: positions.value_usd,
     })
       .from(position_changes)
       .leftJoin(stocks, eq(position_changes.stock_id, stocks.id))
-      .where(eq(position_changes.investor_id, investor.id))
+      .leftJoin(
+        positions,
+        and(eq(positions.filing_id, filing.id), eq(positions.stock_id, position_changes.stock_id))
+      )
+      .where(and(
+        eq(position_changes.investor_id, investor.id),
+        eq(position_changes.quarter, latestQuarter),
+      ))
 
-    const quarterChanges = changes.filter(c => true) // already filtered by recent filings loop
+    if (changes.length === 0) continue  // no changes this quarter for this investor
 
     updates.push({
       investorId: investor.id,
       investorName: investor.name_cn,
       cik: investor.cik,
       institution: investor.institution,
-      changes: quarterChanges.map(c => ({
+      changes: changes.map(c => ({
         ticker: c.ticker ?? null,
         nameOfIssuer: c.name_en ?? '',
         changeType: c.change_type as 'NEW' | 'INCREASED' | 'DECREASED' | 'EXITED',
         pctChange: c.pct_change ?? null,
-        valueUsd: 0, // approximate — curr_shares * price would need market data
+        valueUsd: c.value_usd ?? 0,
       })),
     })
   }
 
   if (updates.length === 0) {
-    return NextResponse.json({ sent: false, reason: 'No investor updates to report' })
+    return NextResponse.json({ sent: false, reason: `No changes found for ${latestQuarter}` })
   }
 
   // Generate AI digest paragraph
@@ -91,15 +106,15 @@ export async function POST(req: NextRequest) {
   })
   const aiDigest = await generateText(digestPrompt)
 
-  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://your-site.vercel.app'
+  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://fc-cc-investor.vercel.app'
   const html = await render(WeeklyReport({ quarter: latestQuarter, updates, aiDigest, siteUrl }))
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   const dateStr = new Date().toISOString().slice(0, 10)
-  const subject = `13F 周报（${dateStr}）— ${updates.length}位投资人有更新`
+  const subject = `13F 周报（${dateStr}）— ${latestQuarter} 持仓变动`
 
   const { error } = await resend.emails.send({
-    from: 'onboarding@resend.dev', // update to your verified domain
+    from: 'onboarding@resend.dev',
     to: recipientEmail,
     subject,
     html,
@@ -110,5 +125,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email send failed', detail: error }, { status: 500 })
   }
 
-  return NextResponse.json({ sent: true, subject, recipients: [recipientEmail], investors: updates.length })
+  return NextResponse.json({
+    sent: true,
+    subject,
+    quarter: latestQuarter,
+    recipients: [recipientEmail],
+    investors: updates.length,
+    totalChanges: updates.reduce((sum, u) => sum + u.changes.length, 0),
+  })
 }
