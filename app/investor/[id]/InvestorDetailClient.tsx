@@ -249,7 +249,7 @@ function PositionTable({ positions, totalValue, color, investorId }: {
                         style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}
                       >▶</span>
                       <Link
-                        href={`/stock/${pos.ticker}`}
+                        href={`/stock/${encodeURIComponent(pos.ticker)}`}
                         onClick={e => e.stopPropagation()}
                         className="font-mono font-bold text-gray-900 hover:text-purple-700 transition-colors"
                       >

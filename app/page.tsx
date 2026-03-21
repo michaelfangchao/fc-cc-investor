@@ -143,7 +143,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
           <div className="flex flex-col gap-2">
             {insights.topBuys.length === 0 && <p className="text-xs text-gray-400">暂无数据</p>}
             {insights.topBuys.map((item, i) => (
-              <Link key={item.ticker} href={`/stock/${item.ticker}`} className="flex items-center gap-2 group">
+              <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-2 group">
                 <span className="text-xs text-gray-400 w-4 font-mono">{i + 1}</span>
                 <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors w-14">{item.ticker}</span>
                 <span className="text-xs text-gray-500 truncate flex-1">{item.name}</span>
@@ -162,7 +162,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
           <div className="flex flex-col gap-2">
             {insights.topSells.length === 0 && <p className="text-xs text-gray-400">暂无数据</p>}
             {insights.topSells.map((item, i) => (
-              <Link key={item.ticker} href={`/stock/${item.ticker}`} className="flex items-center gap-2 group">
+              <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-2 group">
                 <span className="text-xs text-gray-400 w-4 font-mono">{i + 1}</span>
                 <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-red-600 transition-colors w-14">{item.ticker}</span>
                 <span className="text-xs text-gray-500 truncate flex-1">{item.name}</span>
@@ -180,7 +180,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
           <div className="flex flex-col gap-2.5">
             {insights.consensus.length === 0 && <p className="text-xs text-gray-400">暂无共识持仓</p>}
             {insights.consensus.map(item => (
-              <Link key={item.ticker} href={`/stock/${item.ticker}`} className="flex items-center gap-2 group">
+              <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-2 group">
                 <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-purple-700 transition-colors w-16">{item.ticker}</span>
                 <div className="flex items-center gap-0.5 flex-1">
                   {item.investorIds.map(invId => {
