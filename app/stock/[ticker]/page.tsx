@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { db, investors, filings, positions, stocks, position_changes } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { COLORS_BY_CIK, DEFAULT_COLOR, CHANGE_META, ChangeType, formatValue, formatShares, quarterLabel } from '@/lib/ui-constants'
+import StockChart from '@/components/StockChart'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,6 +107,12 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
         </div>
       </div>
 
+      {/* Historical chart — client component */}
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-5">
+        <h2 className="text-base font-bold text-gray-900 mb-4">持仓历史趋势</h2>
+        <StockChart ticker={upperTicker} />
+      </div>
+
       {holdings.length === 0 ? (
         <div className="bg-white rounded-xl p-10 shadow-sm text-center text-gray-400">
           <p className="text-lg mb-2">暂无追踪的投资人当前持有此股票</p>
@@ -125,7 +132,7 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
               const meta = h.changeType ? CHANGE_META[h.changeType] : null
               return (
                 <Link key={h.investor.id} href={`/investor/${h.investor.id}`}>
-                  <div className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all">
+                  <div className="flex items-center gap-3 md:gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
                       style={{ backgroundColor: c.bg }}
@@ -134,18 +141,18 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm text-gray-900">{h.investor.name_cn}</p>
-                      <p className="text-xs text-gray-500">{h.investor.institution}</p>
+                      <p className="text-xs text-gray-500 hidden sm:block">{h.investor.institution}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-mono font-bold text-sm text-gray-900">{h.pct.toFixed(1)}%</p>
-                      <p className="text-xs text-gray-400 font-mono">{formatValue(h.value)}</p>
+                      <p className="text-xs text-gray-400 font-mono hidden sm:block">{formatValue(h.value)}</p>
                     </div>
-                    <div className="text-right text-xs text-gray-400 font-mono">
+                    <div className="text-right text-xs text-gray-400 font-mono hidden md:block">
                       {formatShares(h.shares)}
                     </div>
                     {meta && (
                       <span
-                        className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap"
+                        className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0"
                         style={{ backgroundColor: meta.bg, color: meta.text }}
                       >
                         {meta.emoji} {h.pctChange !== null ? `${h.pctChange > 0 ? '+' : ''}${h.pctChange.toFixed(1)}%` : meta.label}

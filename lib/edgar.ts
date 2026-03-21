@@ -3,7 +3,10 @@
 
 const EDGAR_BASE = 'https://data.sec.gov'
 const EDGAR_ARCHIVE = 'https://www.sec.gov/Archives/edgar/data'
-const USER_AGENT = 'fc-cc-investor contact@example.com'
+
+// EDGAR_EMAIL must be set — placeholder violates SEC policy
+if (!process.env.EDGAR_EMAIL) throw new Error('EDGAR_EMAIL env var is required')
+const USER_AGENT = `fc-cc-investor ${process.env.EDGAR_EMAIL}`
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))

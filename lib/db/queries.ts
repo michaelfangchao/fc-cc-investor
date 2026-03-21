@@ -1,5 +1,5 @@
 // Server-side DB query functions
-import { db, investors, filings, stocks, positions, position_changes } from './index'
+import { db, investors, filings, stocks, positions, position_changes, ai_summaries } from './index'
 import { eq, desc, and, inArray } from 'drizzle-orm'
 import { COLORS_BY_CIK, DEFAULT_COLOR, ChangeType, formatValue, formatShares, quarterLabel } from '@/lib/ui-constants'
 
@@ -219,6 +219,26 @@ export async function getInvestorDetail(investorId: number) {
 
   const color = COLORS_BY_CIK[investor.cik] ?? DEFAULT_COLOR
   return { investor: { ...investor, color }, filings: allFilings }
+}
+
+export type AiAnalysis = {
+  summary_cn?: string
+  bull_points?: string[]
+  bear_points?: string[]
+  recommendation?: string
+  key_moves?: { ticker: string; action: string; reasoning: string }[]
+  error?: string
+}
+
+export async function getAiSummary(investorId: number, filingId: number): Promise<AiAnalysis | null> {
+  const [row] = await db.select({ analysis: ai_summaries.analysis })
+    .from(ai_summaries)
+    .where(and(
+      eq(ai_summaries.investor_id, investorId),
+      eq(ai_summaries.filing_id, filingId),
+    ))
+  if (!row) return null
+  return row.analysis as AiAnalysis | null
 }
 
 export async function getFilingPositions(filingId: number, investorId: number, quarter: string) {

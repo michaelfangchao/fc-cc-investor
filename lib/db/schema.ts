@@ -1,13 +1,15 @@
 import { pgTable, serial, text, integer, bigint, real, timestamp, jsonb, unique, index } from 'drizzle-orm/pg-core'
 
 export const investors = pgTable('investors', {
-  id:          serial('id').primaryKey(),
-  name_cn:     text('name_cn').notNull(),
-  name_en:     text('name_en').notNull(),
-  institution: text('institution').notNull(),
-  cik:         text('cik').notNull().unique(),
-  description: text('description'),
-  created_at:  timestamp('created_at').defaultNow(),
+  id:                      serial('id').primaryKey(),
+  name_cn:                 text('name_cn').notNull(),
+  name_en:                 text('name_en').notNull(),
+  institution:             text('institution').notNull(),
+  cik:                     text('cik').notNull().unique(),
+  description:             text('description'),
+  backfill_status:         text('backfill_status').notNull().default('idle'), // 'idle' | 'running' | 'done' | 'error'
+  backfill_quarters_done:  integer('backfill_quarters_done').notNull().default(0),
+  created_at:              timestamp('created_at').defaultNow(),
 })
 
 export const filings = pgTable('filings', {
@@ -62,4 +64,6 @@ export const ai_summaries = pgTable('ai_summaries', {
   filing_id:   integer('filing_id').notNull().references(() => filings.id),
   created_at:  timestamp('created_at').defaultNow(),
   analysis:    jsonb('analysis'),  // { summary_cn, bull_points[], bear_points[], recommendation, key_moves[] }
-})
+}, (t) => [
+  unique('ai_summaries_investor_filing_unique').on(t.investor_id, t.filing_id),
+])

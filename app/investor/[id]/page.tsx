@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getInvestorDetail, getFilingPositions } from '@/lib/db/queries'
+import { getInvestorDetail, getFilingPositions, getAiSummary, type AiAnalysis } from '@/lib/db/queries'
 import InvestorDetailClient from './InvestorDetailClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +18,10 @@ export default async function InvestorPage({ params }: { params: Promise<{ id: s
     ? await getFilingPositions(latestFiling.id, investorId, latestFiling.period)
     : { positions: [], totalValue: 0 }
 
+  const aiSummary: AiAnalysis | null = latestFiling
+    ? await getAiSummary(investorId, latestFiling.id)
+    : null
+
   return (
     <InvestorDetailClient
       investor={investor}
@@ -25,6 +29,7 @@ export default async function InvestorPage({ params }: { params: Promise<{ id: s
       defaultPositions={defaultPositions.positions}
       defaultQuarter={latestFiling?.period ?? ''}
       totalValue={defaultPositions.totalValue}
+      aiSummary={aiSummary}
     />
   )
 }

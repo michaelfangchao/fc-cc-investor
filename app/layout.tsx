@@ -16,12 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 min-h-screen`}>
         <Navbar />
-        {/* Offset content for fixed 208px sidebar */}
-        <div className="ml-52">
-          <main className="max-w-5xl mx-auto px-6 py-6">
+        {/* ml-0 on mobile (top bar), ml-52 on desktop (sidebar); pt-14 offsets mobile top bar */}
+        <div className="ml-0 md:ml-52 pt-14 md:pt-0">
+          <main className="max-w-5xl mx-auto px-4 md:px-6 py-4 md:py-6">
             {children}
           </main>
-          <footer className="max-w-5xl mx-auto px-6 py-4 border-t border-gray-200 mt-8">
+          <footer className="max-w-5xl mx-auto px-4 md:px-6 py-4 border-t border-gray-200 mt-8">
             <p className="text-xs text-gray-400">🧠 持仓追踪 · 数据来源 SEC EDGAR 13F</p>
           </footer>
         </div>

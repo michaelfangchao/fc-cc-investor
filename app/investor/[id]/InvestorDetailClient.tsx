@@ -4,6 +4,15 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { CHANGE_META, formatValue, formatShares, quarterLabel, ChangeType } from '@/lib/ui-constants'
 
+type AiAnalysis = {
+  summary_cn?: string
+  bull_points?: string[]
+  bear_points?: string[]
+  recommendation?: string
+  key_moves?: { ticker: string; action: string; reasoning: string }[]
+  error?: string
+}
+
 type Color = { bg: string; light: string; text: string; border: string }
 
 type InvestorProp = {
@@ -49,6 +58,7 @@ interface Props {
   defaultPositions: PositionProp[]
   defaultQuarter: string
   totalValue: number
+  aiSummary: AiAnalysis | null
 }
 
 function QuarterSelector({ filings, selected, onChange, color }: {
@@ -316,7 +326,98 @@ function PositionTable({ positions, totalValue, color, investorId }: {
   )
 }
 
-export default function InvestorDetailClient({ investor, filings, defaultPositions, defaultQuarter, totalValue }: Props) {
+function AiSummaryCard({ analysis }: { analysis: AiAnalysis | null }) {
+  if (analysis === null) {
+    // No record at all — analysis not yet generated
+    return (
+      <div className="mt-6 rounded-xl p-4 border border-dashed border-purple-200 bg-purple-50/50 text-center">
+        <p className="text-xs text-purple-500">🤖 AI 分析生成中，请稍后刷新页面...</p>
+      </div>
+    )
+  }
+
+  if (analysis.error) {
+    // Analysis failed or is in progress
+    return (
+      <div className="mt-6 rounded-xl p-4 border border-dashed border-amber-200 bg-amber-50/50 text-center">
+        <p className="text-xs text-amber-600">⏳ {analysis.error}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="mt-6 rounded-xl overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #4338ca 0%, #7c3aed 50%, #c026d3 100%)' }}
+    >
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-white/15">
+        <span className="text-xs font-bold text-white/80 tracking-widest uppercase">🤖 AI 深度分析</span>
+      </div>
+
+      <div className="px-5 py-4 space-y-4">
+        {/* Summary */}
+        {analysis.summary_cn && (
+          <p className="text-sm text-white/90 leading-relaxed">{analysis.summary_cn}</p>
+        )}
+
+        {/* Bull / Bear */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {analysis.bull_points && analysis.bull_points.length > 0 && (
+            <div className="rounded-lg bg-white/10 p-3">
+              <p className="text-xs font-semibold text-emerald-300 mb-2">📈 多方观点</p>
+              <ul className="space-y-1">
+                {analysis.bull_points.slice(0, 3).map((pt, i) => (
+                  <li key={i} className="text-xs text-white/80 flex gap-1.5">
+                    <span className="text-emerald-400 mt-0.5 flex-shrink-0">•</span>
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {analysis.bear_points && analysis.bear_points.length > 0 && (
+            <div className="rounded-lg bg-white/10 p-3">
+              <p className="text-xs font-semibold text-rose-300 mb-2">📉 空方观点</p>
+              <ul className="space-y-1">
+                {analysis.bear_points.slice(0, 3).map((pt, i) => (
+                  <li key={i} className="text-xs text-white/80 flex gap-1.5">
+                    <span className="text-rose-400 mt-0.5 flex-shrink-0">•</span>
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Recommendation */}
+        {analysis.recommendation && (
+          <div className="rounded-lg bg-white/15 px-4 py-3">
+            <p className="text-xs font-semibold text-yellow-300 mb-1">💡 综合建议</p>
+            <p className="text-xs text-white/90 leading-relaxed">{analysis.recommendation}</p>
+          </div>
+        )}
+
+        {/* Key moves */}
+        {analysis.key_moves && analysis.key_moves.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wide">关键动作</p>
+            <div className="flex flex-wrap gap-2">
+              {analysis.key_moves.slice(0, 5).map((km, i) => (
+                <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-white/15 text-white/90 font-mono">
+                  {km.ticker} {km.action}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function InvestorDetailClient({ investor, filings, defaultPositions, defaultQuarter, totalValue, aiSummary }: Props) {
   const [selectedQuarter, setSelectedQuarter] = useState(defaultQuarter)
   const [positions, setPositions] = useState<PositionProp[]>(defaultPositions)
   const [currentTotalValue, setCurrentTotalValue] = useState(totalValue)
@@ -363,7 +464,7 @@ export default function InvestorDetailClient({ investor, filings, defaultPositio
               <p className="text-sm text-gray-500">{investor.name_en} · {investor.institution}</p>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right flex-shrink-0">
             <p className="text-xs text-gray-400">最新季度</p>
             <p className="text-sm font-semibold" style={{ color: color.text }}>
               {filings[0]?.period ? quarterLabel(filings[0].period) : '—'}
@@ -407,10 +508,7 @@ export default function InvestorDetailClient({ investor, filings, defaultPositio
           <PositionTable positions={positions} totalValue={currentTotalValue} color={color} investorId={investor.id} />
         )}
 
-        {/* AI placeholder */}
-        <div className="mt-6 rounded-xl p-4 border border-dashed border-purple-200 bg-purple-50/50">
-          <p className="text-xs text-purple-600 text-center">🤖 AI 分析即将上线 — 将自动分析本季度关键仓位变动</p>
-        </div>
+        <AiSummaryCard analysis={aiSummary} />
       </div>
     </div>
   )
