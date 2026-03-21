@@ -34,29 +34,32 @@ export type InvestorWithFiling = Awaited<ReturnType<typeof getInvestorsWithLates
 export async function getDashboardChanges() {
   const investorsWithFilings = await getInvestorsWithLatestFiling()
 
-  const filingIds = investorsWithFilings
-    .filter(i => i.latestFilingId != null)
-    .map(i => i.latestFilingId as number)
+  // Build per-investor latest period map (only investors that have filings)
+  const investorFilingMap = new Map(
+    investorsWithFilings
+      .filter(i => i.latestFilingId != null && i.latestPeriod != null)
+      .map(i => [i.id, { filingId: i.latestFilingId as number, period: i.latestPeriod as string }])
+  )
 
-  const latestPeriods = [...new Set(
-    investorsWithFilings.filter(i => i.latestPeriod).map(i => i.latestPeriod as string)
-  )]
+  if (investorFilingMap.size === 0) return []
 
-  if (latestPeriods.length === 0) return []
+  const filingIds = [...investorFilingMap.values()].map(v => v.filingId)
 
-  // All changes for the latest quarter(s)
+  // Fetch all changes, then filter in-process to only include each investor's OWN latest period.
+  // Using inArray on all periods would cross-contaminate: if investor A's latest is 2025Q4 and
+  // investor B's latest is 2024Q1, the query would return investor A's 2024Q1 changes too.
+  const allPeriods = [...new Set([...investorFilingMap.values()].map(v => v.period))]
+
   const allChanges = await db.select({
     change: position_changes,
     stock: stocks,
   })
     .from(position_changes)
     .leftJoin(stocks, eq(position_changes.stock_id, stocks.id))
-    .where(inArray(position_changes.quarter, latestPeriods))
+    .where(inArray(position_changes.quarter, allPeriods))
 
   // Value of each position from the latest filings
-  const allPositions = filingIds.length > 0
-    ? await db.select().from(positions).where(inArray(positions.filing_id, filingIds))
-    : []
+  const allPositions = await db.select().from(positions).where(inArray(positions.filing_id, filingIds))
 
   const positionMap = new Map<string, { value_usd: number; pct: number }>()
   for (const pos of allPositions) {
@@ -66,17 +69,14 @@ export async function getDashboardChanges() {
     })
   }
 
-  const investorFilingMap = new Map(
-    investorsWithFilings
-      .filter(i => i.latestFilingId != null)
-      .map(i => [i.id, { filingId: i.latestFilingId as number, period: i.latestPeriod as string }])
-  )
-
   return allChanges.flatMap(({ change, stock }) => {
     const inv = investorsWithFilings.find(i => i.id === change.investor_id)
     if (!inv) return []
     const filing = investorFilingMap.get(change.investor_id)
-    const pos = filing ? positionMap.get(`${filing.filingId}:${change.stock_id}`) : null
+    if (!filing) return []
+    // Only include this change if it matches THIS investor's own latest period
+    if (change.quarter !== filing.period) return []
+    const pos = positionMap.get(`${filing.filingId}:${change.stock_id}`)
     return [{
       id: change.id,
       investorId: change.investor_id,
