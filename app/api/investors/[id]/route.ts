@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, investors, filings, positions, position_changes, ai_summaries } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { isAuthorized } from '@/lib/auth'
-
 type Params = { params: Promise<{ id: string }> }
 
 // GET /api/investors/[id] — return investor status (used for backfill progress polling)
@@ -26,11 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // DELETE /api/investors/[id] — remove investor and all their data
 // Manual deletion order to avoid FK violations: ai_summaries → position_changes → positions → filings → investors
 // NOTE: stocks table is NOT deleted — CUSIPs are shared across all investors and permanently cached.
-export async function DELETE(req: NextRequest, { params }: Params) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params
   const investorId = parseInt(id)
   if (isNaN(investorId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })

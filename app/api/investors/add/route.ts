@@ -2,13 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, investors } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { isAuthorized } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const body = await req.json()
   const { cik, name_cn, name_en, institution } = body
 

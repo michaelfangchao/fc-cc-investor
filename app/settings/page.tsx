@@ -66,10 +66,8 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
 
   async function handleDelete() {
     setDeleting(true)
-    const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || ''
     const res = await fetch(`/api/investors/${investor.id}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${cronSecret}` },
     })
     if (res.ok) {
       onDelete(investor.id)
@@ -180,12 +178,10 @@ export default function SettingsPage() {
     setAddError('')
     setAdding(true)
     try {
-      const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || ''
       const res = await fetch('/api/investors/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cronSecret}`,
         },
         body: JSON.stringify({
           cik: preview.cik,
