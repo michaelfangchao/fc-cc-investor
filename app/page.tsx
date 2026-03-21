@@ -1,94 +1,12 @@
 import Link from 'next/link'
 import {
   getInvestorsWithLatestFiling, getDashboardChanges, getDashboardInsights,
-  CHANGE_META, ChangeType, formatValue, quarterLabel,
-  COLORS_BY_CIK, DEFAULT_COLOR, InvestorWithFiling,
+  formatValue, quarterLabel,
+  COLORS_BY_CIK, InvestorWithFiling,
 } from '@/lib/db/queries'
+import PositionChangesSection from '@/components/PositionChangesSection'
 
 export const dynamic = 'force-dynamic'
-
-function InvestorBadge({ investorId, investorName, cik }: { investorId: number; investorName: string; cik: string }) {
-  const c = COLORS_BY_CIK[cik] ?? DEFAULT_COLOR
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-      style={{ backgroundColor: c.light, color: c.text, border: `1px solid ${c.border}` }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.bg }} />
-      {investorName}
-    </span>
-  )
-}
-
-type Change = Awaited<ReturnType<typeof getDashboardChanges>>[number]
-
-function ChangeCard({ change }: { change: Change }) {
-  const meta = CHANGE_META[change.changeType]
-  return (
-    <div
-      className="bg-white rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow border-t-2"
-      style={{ borderTopColor: meta.border }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="font-mono font-bold text-gray-900 text-sm">{change.ticker}</span>
-            {change.pctChange != null && Math.abs(change.pctChange) > 0 && (
-              <span
-                className="text-xs font-semibold px-1.5 py-0.5 rounded-full"
-                style={{ backgroundColor: meta.bg, color: meta.text }}
-              >
-                {change.pctChange > 0 ? '+' : ''}{change.pctChange.toFixed(1)}%
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 truncate">{change.companyName || '—'}</p>
-        </div>
-        <span
-          className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap font-medium flex-shrink-0"
-          style={{ backgroundColor: meta.bg, color: meta.text }}
-        >
-          {meta.emoji} {meta.label}
-        </span>
-      </div>
-      <div className="mt-2 flex items-center justify-between">
-        <InvestorBadge investorId={change.investorId} investorName={change.investorName} cik={change.investorCik} />
-        {change.valueUsd > 0 && (
-          <span className="text-xs text-gray-400 font-mono">{formatValue(change.valueUsd)}</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ChangeColumn({ type, title, changes }: { type: ChangeType; title: string; changes: Change[] }) {
-  const meta = CHANGE_META[type]
-  const filtered = changes.filter(c => c.changeType === type)
-  return (
-    <div className="flex-1 min-w-0">
-      <div
-        className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3"
-        style={{ backgroundColor: meta.bg, border: `1px solid ${meta.border}` }}
-      >
-        <span className="text-base">{meta.emoji}</span>
-        <span className="font-semibold text-sm" style={{ color: meta.text }}>{title}</span>
-        <span
-          className="ml-auto text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full text-white"
-          style={{ backgroundColor: meta.border }}
-        >
-          {filtered.length}
-        </span>
-      </div>
-      <div className="flex flex-col gap-2">
-        {filtered.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-6">暂无变动</div>
-        ) : (
-          filtered.map(c => <ChangeCard key={c.id} change={c} />)
-        )}
-      </div>
-    </div>
-  )
-}
 
 function StatusBar({ investors, currentQuarter }: { investors: InvestorWithFiling[]; currentQuarter: string }) {
   return (
@@ -233,12 +151,17 @@ export default async function DashboardPage() {
 
   const insights = await getDashboardInsights(investorsWithFilings)
 
-  // Determine the most recent quarter across all investors
   const currentQuarter = investorsWithFilings
     .filter(i => i.latestPeriod)
     .map(i => i.latestPeriod as string)
     .sort()
     .reverse()[0] ?? '2025Q4'
+
+  const investorChips = investorsWithFilings.map(inv => ({
+    id: inv.id,
+    name_cn: inv.name_cn,
+    cik: inv.cik,
+  }))
 
   return (
     <div>
@@ -251,16 +174,11 @@ export default async function DashboardPage() {
       <AIOverview />
       <OverallInsights insights={insights} investors={investorsWithFilings} currentQuarter={currentQuarter} />
 
-      <div className="mb-3">
-        <h2 className="text-base font-bold text-gray-900">本季度持仓变动</h2>
-        <p className="text-xs text-gray-500 mt-0.5">所有追踪投资人的 {quarterLabel(currentQuarter)} 操作汇总</p>
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ChangeColumn type="NEW"       title="新建仓" changes={changes} />
-        <ChangeColumn type="INCREASED" title="加仓"   changes={changes} />
-        <ChangeColumn type="DECREASED" title="减仓"   changes={changes} />
-        <ChangeColumn type="EXITED"    title="清仓"   changes={changes} />
-      </div>
+      <PositionChangesSection
+        changes={changes}
+        investors={investorChips}
+        quarter={quarterLabel(currentQuarter)}
+      />
     </div>
   )
 }
