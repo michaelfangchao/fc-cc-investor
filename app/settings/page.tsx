@@ -87,6 +87,18 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
+  // Edit state
+  const [editing, setEditing] = useState(false)
+  const [editNameCn, setEditNameCn] = useState(investor.name_cn)
+  const [editNameEn, setEditNameEn] = useState(investor.name_en)
+  const [editInstitution, setEditInstitution] = useState(investor.institution)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  // Local display values (updated optimistically on save, no full page reload needed)
+  const [displayNameCn, setDisplayNameCn] = useState(investor.name_cn)
+  const [displayNameEn, setDisplayNameEn] = useState(investor.name_en)
+  const [displayInstitution, setDisplayInstitution] = useState(investor.institution)
+
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/investors/${investor.id}`)
     const data = await res.json()
@@ -110,16 +122,95 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
     }
   }
 
+  function startEdit() {
+    setEditNameCn(displayNameCn)
+    setEditNameEn(displayNameEn)
+    setEditInstitution(displayInstitution)
+    setSaveError('')
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    if (!editNameCn.trim()) return
+    setSaving(true)
+    setSaveError('')
+    const res = await fetch(`/api/investors/${investor.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name_cn: editNameCn, name_en: editNameEn, institution: editInstitution }),
+    })
+    if (res.ok) {
+      setDisplayNameCn(editNameCn.trim())
+      setDisplayNameEn(editNameEn.trim())
+      setDisplayInstitution(editInstitution.trim())
+      setEditing(false)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setSaveError(data.error || '保存失败')
+    }
+    setSaving(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/30">
+        <div className="flex flex-col gap-2 mb-2">
+          <input
+            value={editNameCn}
+            onChange={e => setEditNameCn(e.target.value)}
+            placeholder="中文名称（必填）"
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+            onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false) }}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <input
+              value={editNameEn}
+              onChange={e => setEditNameEn(e.target.value)}
+              placeholder="英文名称"
+              className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+            />
+            <input
+              value={editInstitution}
+              onChange={e => setEditInstitution(e.target.value)}
+              placeholder="机构名称"
+              className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+            />
+          </div>
+          {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-gray-400">{investor.cik}</span>
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => setEditing(false)}
+              className="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !editNameCn.trim()}
+              className="text-xs px-3 py-1 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-60"
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-semibold text-sm text-gray-900">{investor.name_cn}</p>
-          <span className="text-xs text-gray-400 hidden sm:inline">{investor.name_en}</span>
+          <p className="font-semibold text-sm text-gray-900">{displayNameCn}</p>
+          <span className="text-xs text-gray-400 hidden sm:inline">{displayNameEn}</span>
           <BackfillBadge status={status} done={done} />
         </div>
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-          <p className="text-xs text-gray-400">{investor.institution}</p>
+          <p className="text-xs text-gray-400">{displayInstitution}</p>
           <span className="text-xs font-mono text-gray-500">{investor.cik}</span>
         </div>
         {status === 'running' && (
@@ -137,6 +228,12 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
         {status === 'error' && (
           <RetryButton investorId={investor.id} onRetry={() => { setStatus('running'); setDone(0) }} />
         )}
+        <button
+          onClick={startEdit}
+          className="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-600 transition-colors"
+        >
+          编辑
+        </button>
         <Link
           href={`/investor/${investor.id}`}
           className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700 transition-colors"

@@ -23,6 +23,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json(investor)
 }
 
+// PATCH /api/investors/[id] — update investor display info (name_cn, name_en, institution)
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  const investorId = parseInt(id)
+  if (isNaN(investorId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
+
+  const { name_cn, name_en, institution } = body
+  if (!name_cn?.trim()) return NextResponse.json({ error: '中文名不能为空' }, { status: 400 })
+
+  const [updated] = await db.update(investors)
+    .set({
+      name_cn: name_cn.trim(),
+      ...(name_en != null ? { name_en: name_en.trim() } : {}),
+      ...(institution != null ? { institution: institution.trim() } : {}),
+    })
+    .where(eq(investors.id, investorId))
+    .returning()
+
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(updated)
+}
+
 // DELETE /api/investors/[id] — remove investor and all their data
 // Manual deletion order to avoid FK violations: ai_summaries → position_changes → positions → filings → investors
 // NOTE: stocks table is NOT deleted — CUSIPs are shared across all investors and permanently cached.
