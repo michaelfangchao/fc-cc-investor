@@ -50,16 +50,14 @@ export async function fetchAndStore13F(
 
   if (newCusips.length > 0) {
     const figiMap = await cusipsToTickers(newCusips)
-    for (const pos of rawPositions) {
-      if (!cachedMap.has(pos.cusip)) {
-        const ticker = figiMap.get(pos.cusip) || null
-        const [newStock] = await db.insert(stocks)
-          .values({ cusip: pos.cusip, name_en: pos.nameOfIssuer, ticker })
-          .onConflictDoUpdate({ target: stocks.cusip, set: { name_en: pos.nameOfIssuer, ticker } })
-          .returning()
-        cachedMap.set(pos.cusip, newStock)
-      }
-    }
+    // Batch insert all new stocks in one query, then read them back
+    const newStockRows = rawPositions
+      .filter(pos => !cachedMap.has(pos.cusip))
+      .map(pos => ({ cusip: pos.cusip, name_en: pos.nameOfIssuer, ticker: figiMap.get(pos.cusip) || null }))
+    await db.insert(stocks).values(newStockRows).onConflictDoNothing()
+    // Re-read all (handles rare race where another investor inserted the same CUSIP concurrently)
+    const freshStocks = await db.select().from(stocks).where(inArray(stocks.cusip, newCusips))
+    for (const s of freshStocks) cachedMap.set(s.cusip, s)
   }
 
   const totalValue = rawPositions.reduce((s, p) => s + p.valueThousands, 0)
@@ -71,19 +69,23 @@ export async function fetchAndStore13F(
     accession_number: filing.accessionNumber,
   }).returning()
 
-  for (const pos of rawPositions) {
-    const stock = cachedMap.get(pos.cusip)
-    if (!stock) continue
-    const pct = totalValue > 0 ? (pos.valueThousands / totalValue) * 100 : 0
-    await db.insert(positions)
-      .values({
+  const positionRows = rawPositions
+    .map(pos => {
+      const stock = cachedMap.get(pos.cusip)
+      if (!stock) return null
+      const pct = totalValue > 0 ? (pos.valueThousands / totalValue) * 100 : 0
+      return {
         filing_id: newFiling.id,
         stock_id: stock.id,
         shares: pos.shares,
         value_usd: pos.valueThousands,
         pct_of_portfolio: parseFloat(pct.toFixed(4)),
-      })
-      .onConflictDoNothing()
+      }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+
+  if (positionRows.length > 0) {
+    await db.insert(positions).values(positionRows).onConflictDoNothing()
   }
 
   await computeChanges(investorId, newFiling.id, filing.period, rawPositions, cachedMap)
@@ -113,6 +115,10 @@ async function computeChanges(
 
   const prevMap = new Map(prevPositions.map(p => [p.stock_id, p.shares]))
   const currentStockIds = new Set<number>()
+  const changeRows: {
+    investor_id: number; stock_id: number; quarter: string; change_type: string;
+    prev_shares: number | null; curr_shares: number; pct_change: number | null;
+  }[] = []
 
   for (const raw of currentRaw) {
     const stock = stockMap.get(raw.cusip)
@@ -135,33 +141,33 @@ async function computeChanges(
       continue // unchanged
     }
 
-    await db.insert(position_changes)
-      .values({
-        investor_id: investorId,
-        stock_id: stock.id,
-        quarter: currentQuarter,
-        change_type: changeType,
-        prev_shares: prevShares,
-        curr_shares: raw.shares,
-        pct_change: pctChange !== null ? parseFloat(pctChange.toFixed(2)) : null,
-      })
-      .onConflictDoNothing()
+    changeRows.push({
+      investor_id: investorId,
+      stock_id: stock.id,
+      quarter: currentQuarter,
+      change_type: changeType,
+      prev_shares: prevShares,
+      curr_shares: raw.shares,
+      pct_change: pctChange !== null ? parseFloat(pctChange.toFixed(2)) : null,
+    })
   }
 
   // EXITED: positions in prev quarter but not in current
   for (const [stockId, prevShares] of prevMap.entries()) {
     if (!currentStockIds.has(stockId)) {
-      await db.insert(position_changes)
-        .values({
-          investor_id: investorId,
-          stock_id: stockId,
-          quarter: currentQuarter,
-          change_type: 'EXITED',
-          prev_shares: prevShares,
-          curr_shares: 0,
-          pct_change: -100,
-        })
-        .onConflictDoNothing()
+      changeRows.push({
+        investor_id: investorId,
+        stock_id: stockId,
+        quarter: currentQuarter,
+        change_type: 'EXITED',
+        prev_shares: prevShares,
+        curr_shares: 0,
+        pct_change: -100,
+      })
     }
+  }
+
+  if (changeRows.length > 0) {
+    await db.insert(position_changes).values(changeRows).onConflictDoNothing()
   }
 }

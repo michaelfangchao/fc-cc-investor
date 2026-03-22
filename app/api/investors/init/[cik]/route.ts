@@ -23,32 +23,35 @@ export async function POST(req: NextRequest, { params }: Params) {
   const [investor] = await db.select().from(investors).where(eq(investors.cik, cik))
   if (!investor) return NextResponse.json({ error: 'Investor not found' }, { status: 404 })
 
-  // Get all available filings from EDGAR (ascending: oldest first for backfill)
-  const edgarFilings = await getFilings(cik)
-  // Take the 8 most recent quarters, process oldest → newest
-  const backfillList = edgarFilings.slice(0, 8).reverse() // now oldest first
-
-  // Determine which filing to process this hop
-  const currentIndex = targetQuarter
-    ? backfillList.findIndex(f => f.period === targetQuarter)
-    : 0
-
-  if (currentIndex === -1) {
-    // Quarter not found — mark done
-    await db.update(investors)
-      .set({ backfill_status: 'done', backfill_quarters_done: investor.backfill_quarters_done })
-      .where(eq(investors.id, investor.id))
-    return NextResponse.json({ done: true })
-  }
-
-  const filing = backfillList[currentIndex]
-
-  // Mark running
+  // Mark running immediately — everything below is wrapped in try/catch so errors
+  // will properly transition to 'error' state rather than leaving status as 'running'.
   await db.update(investors)
     .set({ backfill_status: 'running' })
     .where(eq(investors.id, investor.id))
 
   try {
+    // Get all available filings from EDGAR (ascending: oldest first for backfill)
+    // NOTE: previously outside try/catch — a getFilings() failure would leave status
+    // permanently as 'running'. Now it's inside so failures transition to 'error'.
+    const edgarFilings = await getFilings(cik)
+    // Take the 8 most recent quarters, process oldest → newest
+    const backfillList = edgarFilings.slice(0, 8).reverse() // now oldest first
+
+    // Determine which filing to process this hop
+    const currentIndex = targetQuarter
+      ? backfillList.findIndex(f => f.period === targetQuarter)
+      : 0
+
+    if (currentIndex === -1) {
+      // Quarter not found — mark done
+      await db.update(investors)
+        .set({ backfill_status: 'done', backfill_quarters_done: investor.backfill_quarters_done })
+        .where(eq(investors.id, investor.id))
+      return NextResponse.json({ done: true })
+    }
+
+    const filing = backfillList[currentIndex]
+
     const result = await fetchAndStore13F(investor.id, cik, filing)
 
     const quartersDone = investor.backfill_quarters_done + (result.status === 'ok' ? 1 : 0)
