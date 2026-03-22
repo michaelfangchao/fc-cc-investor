@@ -152,6 +152,11 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
   for (const change of buyChanges) {
     const inv = investorById.get(change.investor_id)
     if (!inv) continue
+    // Only include changes from THIS investor's OWN latest period.
+    // allChanges is queried by inArray(latestPeriods) which cross-contaminates:
+    // if investor A's latest is 2025Q4 and 段永平's latest is 2024Q4, the query returns
+    // 段永平's 2024Q4 buys even though the dashboard is showing 2025Q4.
+    if (change.quarter !== inv.latestPeriod) continue
     const pct = positionByInvStock.get(`${change.investor_id}:${change.stock_id}`) ?? 0
     const stock = stockById.get(change.stock_id)
     if (!stock) continue
@@ -195,6 +200,7 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
     if (!stockInfo) continue
     const inv = investorById.get(change.investor_id)
     if (!inv) continue
+    if (change.quarter !== inv.latestPeriod) continue
     const magnitude = Math.abs(change.pct_change ?? 0)
     const existing = sellMap.get(change.stock_id)
     if (existing) {
