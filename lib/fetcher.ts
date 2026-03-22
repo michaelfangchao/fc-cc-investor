@@ -22,6 +22,8 @@ export async function fetchAndStore13F(
   cik: string,
   filing: FilingRecord,
 ): Promise<FetchResult> {
+  const startTime = Date.now()
+
   // Check if we already have this quarter
   const [existing] = await db.select()
     .from(filings)
@@ -49,7 +51,11 @@ export async function fetchAndStore13F(
   const newCusips = allCusips.filter(c => !cachedMap.has(c))
 
   if (newCusips.length > 0) {
-    const figiMap = await cusipsToTickers(newCusips)
+    // Time-budget guard: skip OpenFIGI if we're already >45s in (Vercel limit = 60s).
+    // Positions stored with ticker=null are still usable; tickers resolve on next cache hit.
+    const elapsed = Date.now() - startTime
+    const figiMap = elapsed < 45_000 ? await cusipsToTickers(newCusips) : new Map<string, string>()
+    if (elapsed >= 45_000) console.warn(`fetchAndStore13F: skipping OpenFIGI for ${newCusips.length} CUSIPs (${elapsed}ms elapsed)`)
     // Batch insert all new stocks in one query, then read them back
     const newStockRows = rawPositions
       .filter(pos => !cachedMap.has(pos.cusip))
