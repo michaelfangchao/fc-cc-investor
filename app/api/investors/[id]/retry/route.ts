@@ -1,5 +1,5 @@
 // POST /api/investors/[id]/retry — reset an errored backfill and re-trigger the init chain
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db, investors } from '@/lib/db'
 import { and, eq, inArray } from 'drizzle-orm'
 
@@ -26,16 +26,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Investor is not in a retryable state' }, { status: 409 })
   }
 
-  // Re-fire the backfill init chain (non-awaited, same as /investors/add)
+  // Re-fire the backfill init chain — after() ensures Vercel keeps the function alive
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
   if (baseUrl) {
-    fetch(`${baseUrl}/api/investors/init/${investor.cik}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-        'Content-Type': 'application/json',
-      },
-    }).catch(err => console.error('retry chain error:', err))
+    after(() =>
+      fetch(`${baseUrl}/api/investors/init/${investor.cik}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(err => console.error('retry chain error:', err))
+    )
   }
 
   return NextResponse.json({ ok: true })

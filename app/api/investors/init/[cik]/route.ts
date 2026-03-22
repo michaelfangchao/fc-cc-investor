@@ -1,7 +1,7 @@
 // POST /api/investors/init/[cik]?quarter=2024Q4
 // Processes ONE quarter of backfill, then chains to the next quarter via a server-to-server HTTP fetch.
 // Called from settings page after investor is added. Each hop stays within Vercel's 60s timeout.
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db, investors } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { isAuthorized } from '@/lib/auth'
@@ -75,18 +75,22 @@ export async function POST(req: NextRequest, { params }: Params) {
       .set({ backfill_quarters_done: quartersDone })
       .where(eq(investors.id, investor.id))
 
-    // Chain to next quarter (server-to-server self-call, non-awaited)
+    // Chain to next quarter (server-to-server self-call)
+    // Uses after() so Vercel keeps the function alive until the fetch completes —
+    // plain non-awaited fetch() is silently killed when the response is sent.
     const nextQuarter = backfillList[currentIndex + 1].period
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
     if (!baseUrl) throw new Error('NEXT_PUBLIC_BASE_URL env var is required for backfill chaining')
 
-    fetch(`${baseUrl}/api/investors/init/${cik}?quarter=${nextQuarter}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-        'Content-Type': 'application/json',
-      },
-    }).catch(err => console.error('init chain error:', err))
+    after(() =>
+      fetch(`${baseUrl}/api/investors/init/${cik}?quarter=${nextQuarter}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(err => console.error('init chain error:', err))
+    )
 
     return NextResponse.json({ quarter: filing.period, status: result.status, quartersDone, nextQuarter })
   } catch (err) {
@@ -101,12 +105,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 function fireAiAnalysis(investorId: number, filingId: number) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
   if (!baseUrl) return
-  fetch(`${baseUrl}/api/ai-analysis`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ investorId, filingId }),
-  }).catch(err => console.error('fire AI analysis error:', err))
+  after(() =>
+    fetch(`${baseUrl}/api/ai-analysis`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ investorId, filingId }),
+    }).catch(err => console.error('fire AI analysis error:', err))
+  )
 }
