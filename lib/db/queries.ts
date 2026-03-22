@@ -87,6 +87,7 @@ export async function getDashboardChanges() {
       changeType: change.change_type as ChangeType,
       pctChange: change.pct_change,
       valueUsd: pos?.value_usd ?? 0,
+      pctOfPortfolio: pos?.pct ?? 0,
       quarter: change.quarter,
     }]
   })
@@ -125,59 +126,67 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
         .where(inArray(position_changes.quarter, latestPeriods))
     : []
 
-  // ── Top Buys (NEW + INCREASED, by value) ──────────────────────────────────
-  const newOrIncreased = new Set(
-    allChanges
-      .filter(c => c.change_type === 'NEW' || c.change_type === 'INCREASED')
-      .map(c => c.stock_id)
-  )
+  // ── Top Buys (NEW + INCREASED, by max pct_of_portfolio) ──────────────────
+  // Normalized: shows conviction regardless of portfolio absolute size.
+  // pct_of_portfolio = current weight of this stock in the investor's portfolio.
+  const buyChanges = allChanges.filter(c => c.change_type === 'NEW' || c.change_type === 'INCREASED')
+  const buyStockIds = new Set(buyChanges.map(c => c.stock_id))
 
-  const buyMap = new Map<number, { ticker: string; name: string; totalValue: number }>()
+  // Build position map: stock_id → max pct_of_portfolio across all investors
+  const buyMap = new Map<number, { ticker: string; name: string; maxPct: number }>()
   for (const { position, stock } of allPositions) {
-    if (!newOrIncreased.has(position.stock_id) || !stock) continue
+    if (!buyStockIds.has(position.stock_id) || !stock) continue
+    const pct = position.pct_of_portfolio ?? 0
     const existing = buyMap.get(position.stock_id)
     if (existing) {
-      existing.totalValue += position.value_usd
+      existing.maxPct = Math.max(existing.maxPct, pct)
     } else {
       buyMap.set(position.stock_id, {
         ticker: stock.ticker ?? stock.cusip,
         name: stock.name_en,
-        totalValue: position.value_usd,
+        maxPct: pct,
       })
     }
   }
   const topBuys = [...buyMap.values()]
-    .sort((a, b) => b.totalValue - a.totalValue)
+    .sort((a, b) => b.maxPct - a.maxPct)
     .slice(0, 8)
 
-  // ── Top Sells (DECREASED + EXITED, by value removed) ─────────────────────
-  const exitedOrDecreased = new Set(
-    allChanges
-      .filter(c => c.change_type === 'EXITED' || c.change_type === 'DECREASED')
-      .map(c => c.stock_id)
-  )
+  // ── Top Sells (DECREASED + EXITED, by max |pct_change|) ──────────────────
+  // Normalized: shows reduction magnitude regardless of portfolio size.
+  // pct_change is the % change in shares (negative for decreases; EXITED ≈ -100).
+  const sellChanges = allChanges.filter(c => c.change_type === 'EXITED' || c.change_type === 'DECREASED')
 
-  const sellMap = new Map<number, { ticker: string; name: string; totalValue: number; stockId: number }>()
-  for (const change of allChanges) {
-    if (change.change_type !== 'EXITED' && change.change_type !== 'DECREASED') continue
-    const pos = allPositions.find(p => p.position.stock_id === change.stock_id)
-    const stock = pos?.stock
-    if (!stock) continue
-    const prevValue = change.prev_shares ?? 0
+  // EXITED stocks are no longer in allPositions (no current-quarter position row).
+  // Build a stockById map from what we have, then fetch any missing EXITED stock IDs.
+  const stockById = new Map(
+    allPositions.flatMap(({ stock }) => stock ? [[stock.id, stock]] : [])
+  )
+  const missingStockIds = [...new Set(sellChanges.map(c => c.stock_id))]
+    .filter(id => !stockById.has(id))
+  if (missingStockIds.length > 0) {
+    const exitedStocks = await db.select().from(stocks).where(inArray(stocks.id, missingStockIds))
+    for (const s of exitedStocks) stockById.set(s.id, s)
+  }
+
+  const sellMap = new Map<number, { ticker: string; name: string; maxPctChange: number }>()
+  for (const change of sellChanges) {
+    const stockInfo = stockById.get(change.stock_id)
+    if (!stockInfo) continue
+    const magnitude = Math.abs(change.pct_change ?? 0)
     const existing = sellMap.get(change.stock_id)
     if (existing) {
-      existing.totalValue += prevValue
+      existing.maxPctChange = Math.max(existing.maxPctChange, magnitude)
     } else {
       sellMap.set(change.stock_id, {
-        ticker: stock.ticker ?? stock.cusip,
-        name: stock.name_en,
-        totalValue: prevValue,
-        stockId: change.stock_id,
+        ticker: stockInfo.ticker ?? stockInfo.cusip,
+        name: stockInfo.name_en,
+        maxPctChange: magnitude,
       })
     }
   }
   const topSells = [...sellMap.values()]
-    .sort((a, b) => b.totalValue - a.totalValue)
+    .sort((a, b) => b.maxPctChange - a.maxPctChange)
     .slice(0, 8)
 
   // ── Consensus (held by 2+ investors) ─────────────────────────────────────
@@ -206,6 +215,93 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
   consensus.sort((a, b) => b.investorCount - a.investorCount)
 
   return { topBuys, topSells, consensus: consensus.slice(0, 10) }
+}
+
+export async function getDashboard2QtrTopBuys() {
+  // Find the 2 most recent distinct quarters across all filings
+  const recentFilings = await db.select({ period: filings.period })
+    .from(filings)
+    .orderBy(desc(filings.period))
+
+  const recentQuarters = [...new Set(recentFilings.map(f => f.period))].slice(0, 2)
+  if (recentQuarters.length === 0) return []
+
+  // Parallelize independent queries after quarters are known
+  const [changes, quarterFilings, allInvestors] = await Promise.all([
+    db.select().from(position_changes).where(inArray(position_changes.quarter, recentQuarters)),
+    db.select().from(filings).where(inArray(filings.period, recentQuarters)),
+    db.select().from(investors),
+  ])
+
+  const buyChanges = changes.filter(c => c.change_type === 'NEW' || c.change_type === 'INCREASED')
+  if (buyChanges.length === 0) return []
+
+  const filingIds = quarterFilings.map(f => f.id)
+
+  // All positions for those filings (to get pct_of_portfolio)
+  const allPositions = await db.select({
+    position: positions,
+    stock: stocks,
+    filing: filings,
+  })
+    .from(positions)
+    .leftJoin(stocks, eq(positions.stock_id, stocks.id))
+    .leftJoin(filings, eq(positions.filing_id, filings.id))
+    .where(inArray(positions.filing_id, filingIds))
+
+  // Build a position lookup: investor_id:stock_id:quarter → pct_of_portfolio
+  const filingInvestorMap = new Map(quarterFilings.map(f => [f.id, f.investor_id]))
+
+  const posMap = new Map<string, number>()
+  for (const { position, filing } of allPositions) {
+    if (!filing) continue
+    const invId = filingInvestorMap.get(position.filing_id)
+    if (invId == null) continue
+    posMap.set(`${invId}:${position.stock_id}:${filing.period}`, position.pct_of_portfolio ?? 0)
+  }
+
+  const investorMap = new Map(allInvestors.map(i => [i.id, i]))
+
+  // O(1) stock lookup map (avoid O(n²) find inside loop)
+  const stockMap = new Map(
+    allPositions.flatMap(({ stock }) => stock ? [[stock.id, stock]] : [])
+  )
+
+  // Build top buys list — one entry per (investor, stock, quarter)
+  type BuyEntry = {
+    ticker: string
+    companyName: string
+    investorName: string
+    investorCik: string
+    quarter: string
+    changeType: string
+    pctOfPortfolio: number
+    pctChange: number
+  }
+
+  const results: BuyEntry[] = []
+  for (const change of buyChanges) {
+    const inv = investorMap.get(change.investor_id)
+    if (!inv) continue
+    const key = `${change.investor_id}:${change.stock_id}:${change.quarter}`
+    const pctOfPortfolio = posMap.get(key) ?? 0
+    const stockInfo = stockMap.get(change.stock_id)
+    if (!stockInfo) continue
+    results.push({
+      ticker: stockInfo.ticker ?? stockInfo.cusip,
+      companyName: stockInfo.name_en,
+      investorName: inv.name_cn,
+      investorCik: inv.cik,
+      quarter: change.quarter,
+      changeType: change.change_type,
+      pctOfPortfolio,
+      pctChange: change.pct_change ?? 0,
+    })
+  }
+
+  return results
+    .sort((a, b) => b.pctOfPortfolio - a.pctOfPortfolio)
+    .slice(0, 10)
 }
 
 export async function getInvestorDetail(investorId: number) {

@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import {
   getInvestorsWithLatestFiling, getDashboardChanges, getDashboardInsights,
-  formatValue, quarterLabel,
-  COLORS_BY_CIK, InvestorWithFiling,
+  getDashboard2QtrTopBuys,
+  quarterLabel,
+  COLORS_BY_CIK, DEFAULT_COLOR, InvestorWithFiling,
 } from '@/lib/db/queries'
 import PositionChangesSection from '@/components/PositionChangesSection'
 
@@ -58,6 +59,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
             新建/加仓最多
           </h3>
+          <p className="text-xs text-gray-400 mb-2">按仓位占比排序</p>
           <div className="flex flex-col gap-2">
             {insights.topBuys.length === 0 && <p className="text-xs text-gray-400">暂无数据</p>}
             {insights.topBuys.map((item, i) => (
@@ -65,7 +67,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
                 <span className="text-xs text-gray-400 w-4 font-mono">{i + 1}</span>
                 <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors w-14">{item.ticker}</span>
                 <span className="text-xs text-gray-500 truncate flex-1">{item.name}</span>
-                <span className="text-xs font-semibold text-emerald-600 font-mono whitespace-nowrap">{formatValue(item.totalValue)}</span>
+                <span className="text-xs font-semibold text-emerald-600 font-mono whitespace-nowrap">{item.maxPct.toFixed(1)}%</span>
               </Link>
             ))}
           </div>
@@ -77,6 +79,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
             <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
             减仓/清仓最多
           </h3>
+          <p className="text-xs text-gray-400 mb-2">按减仓幅度排序</p>
           <div className="flex flex-col gap-2">
             {insights.topSells.length === 0 && <p className="text-xs text-gray-400">暂无数据</p>}
             {insights.topSells.map((item, i) => (
@@ -84,6 +87,7 @@ function OverallInsights({ insights, investors, currentQuarter }: {
                 <span className="text-xs text-gray-400 w-4 font-mono">{i + 1}</span>
                 <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-red-600 transition-colors w-14">{item.ticker}</span>
                 <span className="text-xs text-gray-500 truncate flex-1">{item.name}</span>
+                <span className="text-xs font-semibold text-red-500 font-mono whitespace-nowrap">-{item.maxPctChange.toFixed(0)}%</span>
               </Link>
             ))}
           </div>
@@ -126,6 +130,95 @@ function OverallInsights({ insights, investors, currentQuarter }: {
   )
 }
 
+type Changes = Awaited<ReturnType<typeof getDashboardChanges>>
+type TopBuys2Qtr = Awaited<ReturnType<typeof getDashboard2QtrTopBuys>>
+
+function KpiBar({ changes, consensusCount }: { changes: Changes; consensusCount: number }) {
+  const total = changes.length
+  const newCount = changes.filter(c => c.changeType === 'NEW').length
+  const exitCount = changes.filter(c => c.changeType === 'EXITED').length
+  const stats = [
+    { label: '本季度变动', value: total, color: 'text-purple-700', bg: 'bg-purple-50' },
+    { label: '新建仓', value: newCount, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+    { label: '清仓', value: exitCount, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: '共识持仓', value: consensusCount, color: 'text-blue-700', bg: 'bg-blue-50' },
+  ]
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      {stats.map(s => (
+        <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
+          <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Top2QtrBuys({ buys }: { buys: TopBuys2Qtr }) {
+  if (buys.length === 0) return null
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm mb-5">
+      <h2 className="text-base font-bold text-gray-900 mb-1">🏆 过去 2 季度最大加仓 Top 10</h2>
+      <p className="text-xs text-gray-400 mb-4">按仓位占比排序，与组合规模无关 — 参考 Dataroma 「% change to portfolio」逻辑</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-400 border-b border-gray-100">
+              <th className="text-left pb-2 w-6">#</th>
+              <th className="text-left pb-2 w-16">股票</th>
+              <th className="text-left pb-2 hidden md:table-cell">公司</th>
+              <th className="text-left pb-2">投资人</th>
+              <th className="text-left pb-2">操作</th>
+              <th className="text-right pb-2">仓位占比</th>
+              <th className="text-right pb-2 hidden md:table-cell">加仓幅度</th>
+              <th className="text-right pb-2">季度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {buys.map((item, i) => {
+              const color = COLORS_BY_CIK[item.investorCik] ?? DEFAULT_COLOR
+              return (
+                <tr key={`${item.investorCik}-${item.ticker}-${item.quarter}`} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                  <td className="py-2.5 text-xs text-gray-400 font-mono">{i + 1}</td>
+                  <td className="py-2.5">
+                    <Link href={`/stock/${encodeURIComponent(item.ticker)}`} className="font-mono font-bold text-gray-900 hover:text-purple-700 transition-colors">
+                      {item.ticker}
+                    </Link>
+                  </td>
+                  <td className="py-2.5 text-xs text-gray-500 truncate max-w-[140px] hidden md:table-cell">{item.companyName}</td>
+                  <td className="py-2.5">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color.bg }} />
+                      <span className="text-xs text-gray-700">{item.investorName}</span>
+                    </span>
+                  </td>
+                  <td className="py-2.5">
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                      item.changeType === 'NEW'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {item.changeType === 'NEW' ? '新建' : '加仓'}
+                    </span>
+                  </td>
+                  <td className="py-2.5 text-right font-mono font-bold text-emerald-600 text-sm">
+                    {item.pctOfPortfolio.toFixed(1)}%
+                  </td>
+                  <td className="py-2.5 text-right text-xs text-gray-500 font-mono hidden md:table-cell">
+                    {item.changeType === 'NEW' ? '—' : `+${item.pctChange.toFixed(0)}%`}
+                  </td>
+                  <td className="py-2.5 text-right text-xs text-gray-400 font-mono">{item.quarter}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function AIOverview() {
   return (
     <div
@@ -144,9 +237,10 @@ function AIOverview() {
 }
 
 export default async function DashboardPage() {
-  const [investorsWithFilings, changes] = await Promise.all([
+  const [investorsWithFilings, changes, topBuys2Qtr] = await Promise.all([
     getInvestorsWithLatestFiling(),
     getDashboardChanges(),
+    getDashboard2QtrTopBuys(),
   ])
 
   const insights = await getDashboardInsights(investorsWithFilings)
@@ -171,7 +265,9 @@ export default async function DashboardPage() {
       </div>
 
       <StatusBar investors={investorsWithFilings} currentQuarter={currentQuarter} />
+      <KpiBar changes={changes} consensusCount={insights.consensus.length} />
       <AIOverview />
+      <Top2QtrBuys buys={topBuys2Qtr} />
       <OverallInsights insights={insights} investors={investorsWithFilings} currentQuarter={currentQuarter} />
 
       <PositionChangesSection

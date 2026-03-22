@@ -11,6 +11,7 @@ type Change = {
   changeType: ChangeType
   pctChange: number | null
   valueUsd: number
+  pctOfPortfolio: number
   investorId: number
   investorName: string
   investorCik: string
@@ -70,9 +71,14 @@ function ChangeCard({ change }: { change: Change }) {
       </div>
       <div className="mt-2 flex items-center justify-between">
         <InvestorBadge investorName={change.investorName} cik={change.investorCik} />
-        {change.valueUsd > 0 && (
-          <span className="text-xs text-gray-400 font-mono">{formatValue(change.valueUsd)}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {change.pctOfPortfolio > 0 && (
+            <span className="text-xs font-semibold text-gray-600 font-mono">{change.pctOfPortfolio.toFixed(1)}%</span>
+          )}
+          {change.valueUsd > 0 && (
+            <span className="text-xs text-gray-400 font-mono">{formatValue(change.valueUsd)}</span>
+          )}
+        </div>
       </div>
     </div>
   )
