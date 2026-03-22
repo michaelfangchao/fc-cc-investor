@@ -126,25 +126,49 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
         .where(inArray(position_changes.quarter, latestPeriods))
     : []
 
-  // ── Top Buys (NEW + INCREASED, by max pct_of_portfolio) ──────────────────
-  // Normalized: shows conviction regardless of portfolio absolute size.
-  // pct_of_portfolio = current weight of this stock in the investor's portfolio.
-  const buyChanges = allChanges.filter(c => c.change_type === 'NEW' || c.change_type === 'INCREASED')
-  const buyStockIds = new Set(buyChanges.map(c => c.stock_id))
+  // Shared stock lookup (used by both buys and sells)
+  const stockById = new Map(
+    allPositions.flatMap(({ stock }) => stock ? [[stock.id, stock]] : [])
+  )
 
-  // Build position map: stock_id → max pct_of_portfolio across all investors
-  const buyMap = new Map<number, { ticker: string; name: string; maxPct: number }>()
-  for (const { position, stock } of allPositions) {
-    if (!buyStockIds.has(position.stock_id) || !stock) continue
-    const pct = position.pct_of_portfolio ?? 0
-    const existing = buyMap.get(position.stock_id)
+  // Shared position lookup: investor_id:stock_id → pct_of_portfolio (for buys)
+  const positionByInvStock = new Map<string, number>()
+  for (const { position } of allPositions) {
+    const inv = filingInvestorMap.get(position.filing_id)
+    if (!inv) continue
+    positionByInvStock.set(`${inv.id}:${position.stock_id}`, position.pct_of_portfolio ?? 0)
+  }
+
+  // Investor lookup: investor_id → investor (for buys)
+  const investorById = new Map(investorsWithFilings.map(i => [i.id, i]))
+
+  // ── Top Buys (NEW + INCREASED, by max pct_of_portfolio of the BUYING investor) ──
+  // Bug fix: previously took max across ALL holders of the stock, which could
+  // pick up a seller's large position (e.g. 段永平 reducing AAPL at 50.3%).
+  // Now only considers investors who actually made the buy action.
+  const buyChanges = allChanges.filter(c => c.change_type === 'NEW' || c.change_type === 'INCREASED')
+
+  const buyMap = new Map<number, { ticker: string; name: string; maxPct: number; investorName: string; investorCik: string }>()
+  for (const change of buyChanges) {
+    const inv = investorById.get(change.investor_id)
+    if (!inv) continue
+    const pct = positionByInvStock.get(`${change.investor_id}:${change.stock_id}`) ?? 0
+    const stock = stockById.get(change.stock_id)
+    if (!stock) continue
+    const existing = buyMap.get(change.stock_id)
     if (existing) {
-      existing.maxPct = Math.max(existing.maxPct, pct)
+      if (pct > existing.maxPct) {
+        existing.maxPct = pct
+        existing.investorName = inv.name_cn
+        existing.investorCik = inv.cik
+      }
     } else {
-      buyMap.set(position.stock_id, {
+      buyMap.set(change.stock_id, {
         ticker: stock.ticker ?? stock.cusip,
         name: stock.name_en,
         maxPct: pct,
+        investorName: inv.name_cn,
+        investorCik: inv.cik,
       })
     }
   }
@@ -157,11 +181,7 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
   // pct_change is the % change in shares (negative for decreases; EXITED ≈ -100).
   const sellChanges = allChanges.filter(c => c.change_type === 'EXITED' || c.change_type === 'DECREASED')
 
-  // EXITED stocks are no longer in allPositions (no current-quarter position row).
-  // Build a stockById map from what we have, then fetch any missing EXITED stock IDs.
-  const stockById = new Map(
-    allPositions.flatMap(({ stock }) => stock ? [[stock.id, stock]] : [])
-  )
+  // EXITED stocks are no longer in allPositions — fetch any missing stock IDs.
   const missingStockIds = [...new Set(sellChanges.map(c => c.stock_id))]
     .filter(id => !stockById.has(id))
   if (missingStockIds.length > 0) {
@@ -169,19 +189,27 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
     for (const s of exitedStocks) stockById.set(s.id, s)
   }
 
-  const sellMap = new Map<number, { ticker: string; name: string; maxPctChange: number }>()
+  const sellMap = new Map<number, { ticker: string; name: string; maxPctChange: number; investorName: string; investorCik: string }>()
   for (const change of sellChanges) {
     const stockInfo = stockById.get(change.stock_id)
     if (!stockInfo) continue
+    const inv = investorById.get(change.investor_id)
+    if (!inv) continue
     const magnitude = Math.abs(change.pct_change ?? 0)
     const existing = sellMap.get(change.stock_id)
     if (existing) {
-      existing.maxPctChange = Math.max(existing.maxPctChange, magnitude)
+      if (magnitude > existing.maxPctChange) {
+        existing.maxPctChange = magnitude
+        existing.investorName = inv.name_cn
+        existing.investorCik = inv.cik
+      }
     } else {
       sellMap.set(change.stock_id, {
         ticker: stockInfo.ticker ?? stockInfo.cusip,
         name: stockInfo.name_en,
         maxPctChange: magnitude,
+        investorName: inv.name_cn,
+        investorCik: inv.cik,
       })
     }
   }
@@ -267,39 +295,42 @@ export async function getDashboard2QtrTopBuys() {
     allPositions.flatMap(({ stock }) => stock ? [[stock.id, stock]] : [])
   )
 
-  // Build top buys list — one entry per (investor, stock, quarter)
+  // Build top buys — deduplicated per (investor, stock): keep the entry with the highest
+  // pct_of_portfolio. This prevents the same investor+stock from appearing twice when
+  // they bought in both of the 2 recent quarters.
   type BuyEntry = {
     ticker: string
     companyName: string
     investorName: string
     investorCik: string
-    quarter: string
     changeType: string
     pctOfPortfolio: number
     pctChange: number
   }
 
-  const results: BuyEntry[] = []
+  const resultMap = new Map<string, BuyEntry>()
   for (const change of buyChanges) {
     const inv = investorMap.get(change.investor_id)
     if (!inv) continue
-    const key = `${change.investor_id}:${change.stock_id}:${change.quarter}`
-    const pctOfPortfolio = posMap.get(key) ?? 0
+    const pctOfPortfolio = posMap.get(`${change.investor_id}:${change.stock_id}:${change.quarter}`) ?? 0
     const stockInfo = stockMap.get(change.stock_id)
     if (!stockInfo) continue
-    results.push({
-      ticker: stockInfo.ticker ?? stockInfo.cusip,
-      companyName: stockInfo.name_en,
-      investorName: inv.name_cn,
-      investorCik: inv.cik,
-      quarter: change.quarter,
-      changeType: change.change_type,
-      pctOfPortfolio,
-      pctChange: change.pct_change ?? 0,
-    })
+    const key = `${change.investor_id}:${change.stock_id}`
+    const existing = resultMap.get(key)
+    if (!existing || pctOfPortfolio > existing.pctOfPortfolio) {
+      resultMap.set(key, {
+        ticker: stockInfo.ticker ?? stockInfo.cusip,
+        companyName: stockInfo.name_en,
+        investorName: inv.name_cn,
+        investorCik: inv.cik,
+        changeType: change.change_type,
+        pctOfPortfolio,
+        pctChange: change.pct_change ?? 0,
+      })
+    }
   }
 
-  return results
+  return [...resultMap.values()]
     .sort((a, b) => b.pctOfPortfolio - a.pctOfPortfolio)
     .slice(0, 10)
 }
