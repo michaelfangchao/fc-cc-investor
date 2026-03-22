@@ -36,7 +36,7 @@ export async function cusipsToTickers(cusips: string[]): Promise<Map<string, str
     }
 
     // Rate limit between batches (OpenFIGI free tier: ~25 req/min)
-    await new Promise(r => setTimeout(r, 300))
+    await new Promise(r => setTimeout(r, 100))
   }
 
   return result
