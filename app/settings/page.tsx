@@ -49,11 +49,43 @@ function BackfillBadge({ status, done }: { status: string; done: number }) {
   return <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">待初始化</span>
 }
 
+function RetryButton({ investorId, onRetry }: { investorId: number; onRetry: () => void }) {
+  const [retrying, setRetrying] = useState(false)
+
+  async function handleRetry() {
+    setRetrying(true)
+    try {
+      const res = await fetch(`/api/investors/${investorId}/retry`, { method: 'POST' })
+      if (res.ok) {
+        onRetry()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(`重试失败：${data.error || res.status}`)
+      }
+    } catch {
+      alert('网络错误，请稍后重试')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRetry}
+      disabled={retrying}
+      className="text-xs px-2 py-1 rounded-full border border-orange-200 text-orange-600 hover:border-orange-400 hover:bg-orange-50 transition-colors disabled:opacity-60"
+    >
+      {retrying ? '重试中...' : '重试'}
+    </button>
+  )
+}
+
 function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete: (id: number) => void }) {
   const [status, setStatus] = useState(investor.backfill_status)
   const [done, setDone] = useState(investor.backfill_quarters_done)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/investors/${investor.id}`)
@@ -66,12 +98,13 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
 
   async function handleDelete() {
     setDeleting(true)
-    const res = await fetch(`/api/investors/${investor.id}`, {
-      method: 'DELETE',
-    })
+    setDeleteError('')
+    const res = await fetch(`/api/investors/${investor.id}`, { method: 'DELETE' })
     if (res.ok) {
       onDelete(investor.id)
     } else {
+      const data = await res.json().catch(() => ({}))
+      setDeleteError(data.error || `删除失败 (${res.status})`)
       setDeleting(false)
       setConfirmDelete(false)
     }
@@ -97,9 +130,13 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
             />
           </div>
         )}
+        {deleteError && <p className="text-xs text-red-500 mt-1">{deleteError}</p>}
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
+        {status === 'error' && (
+          <RetryButton investorId={investor.id} onRetry={() => { setStatus('running'); setDone(0) }} />
+        )}
         <Link
           href={`/investor/${investor.id}`}
           className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700 transition-colors"

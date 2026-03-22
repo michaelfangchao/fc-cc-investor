@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, investors, filings, positions, position_changes, ai_summaries } from '@/lib/db'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
+
+export const maxDuration = 60
 type Params = { params: Promise<{ id: string }> }
 
 // GET /api/investors/[id] — return investor status (used for backfill progress polling)
@@ -40,10 +42,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     // 2. position_changes (references investor_id + stock_id)
     await tx.delete(position_changes).where(eq(position_changes.investor_id, investorId))
 
-    // 3. positions — need filing ids first (references filing_id)
+    // 3. positions — batch delete by filing IDs (faster than per-filing loop)
     const investorFilings = await tx.select({ id: filings.id }).from(filings).where(eq(filings.investor_id, investorId))
-    for (const f of investorFilings) {
-      await tx.delete(positions).where(eq(positions.filing_id, f.id))
+    const filingIds = investorFilings.map(f => f.id)
+    if (filingIds.length > 0) {
+      await tx.delete(positions).where(inArray(positions.filing_id, filingIds))
     }
 
     // 4. filings (references investor_id)
