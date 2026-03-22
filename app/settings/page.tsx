@@ -225,7 +225,7 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        {status === 'error' && (
+        {(status === 'error' || (status === 'running' && done === 0)) && (
           <RetryButton investorId={investor.id} onRetry={() => { setStatus('running'); setDone(0) }} />
         )}
         <button
