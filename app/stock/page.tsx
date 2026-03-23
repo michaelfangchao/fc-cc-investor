@@ -68,10 +68,10 @@ export default async function StockIndexPage() {
                     <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group">
                       <td className="py-2.5 pr-4">
                         <Link
-                          href={`/stock/${encodeURIComponent(s.ticker ?? s.cusip)}`}
+                          href={`/stock/${encodeURIComponent(s.ticker ?? s.name_en ?? s.cusip)}`}
                           className="font-mono font-bold text-gray-900 group-hover:text-purple-700 transition-colors"
                         >
-                          {s.ticker ?? s.cusip}
+                          {s.ticker ?? s.name_en ?? '—'}
                         </Link>
                       </td>
                       <td className="py-2.5 pr-4 text-sm text-gray-500 hidden sm:table-cell">{s.name_en}</td>
