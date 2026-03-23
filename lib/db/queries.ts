@@ -82,7 +82,7 @@ export async function getDashboardChanges() {
       investorId: change.investor_id,
       investorName: inv.name_cn,
       investorCik: inv.cik,
-      ticker: stock?.ticker ?? stock?.cusip ?? '?',
+      ticker: stock?.ticker ?? stock?.name_en ?? '—',
       companyName: stock?.name_en ?? '',
       changeType: change.change_type as ChangeType,
       pctChange: change.pct_change,
@@ -169,7 +169,7 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
       }
     } else {
       buyMap.set(change.stock_id, {
-        ticker: stock.ticker ?? stock.cusip,
+        ticker: stock.ticker ?? stock.name_en ?? '—',
         name: stock.name_en,
         maxPct: pct,
         investorName: inv.name_cn,
@@ -211,7 +211,7 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
       }
     } else {
       sellMap.set(change.stock_id, {
-        ticker: stockInfo.ticker ?? stockInfo.cusip,
+        ticker: stockInfo.ticker ?? stockInfo.name_en ?? '—',
         name: stockInfo.name_en,
         maxPctChange: magnitude,
         investorName: inv.name_cn,
@@ -240,7 +240,7 @@ export async function getDashboardInsights(investorsWithFilings: InvestorWithFil
     const stock = pos?.stock
     if (!stock) continue
     consensus.push({
-      ticker: stock.ticker ?? stock.cusip,
+      ticker: stock.ticker ?? stock.name_en ?? '—',
       name: stock.name_en,
       investorIds: [...invSet],
       investorCount: invSet.size,
@@ -325,7 +325,7 @@ export async function getDashboard2QtrTopBuys() {
     const existing = resultMap.get(key)
     if (!existing || pctOfPortfolio > existing.pctOfPortfolio) {
       resultMap.set(key, {
-        ticker: stockInfo.ticker ?? stockInfo.cusip,
+        ticker: stockInfo.ticker ?? stockInfo.name_en ?? '—',
         companyName: stockInfo.name_en,
         investorName: inv.name_cn,
         investorCik: inv.cik,
@@ -398,7 +398,7 @@ export async function getFilingPositions(filingId: number, investorId: number, q
     return {
       id: position.id,
       stockId: position.stock_id,
-      ticker: stock?.ticker ?? stock?.cusip ?? '?',
+      ticker: stock?.ticker ?? stock?.name_en ?? '—',
       companyName: stock?.name_en ?? '',
       shares: position.shares,
       valueUsd: position.value_usd,

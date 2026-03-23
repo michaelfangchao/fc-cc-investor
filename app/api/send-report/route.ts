@@ -12,7 +12,11 @@ import { isAuthorized } from '@/lib/auth'
 
 export const maxDuration = 60
 
-export async function POST(req: NextRequest) {
+// Vercel Cron sends GET; keep POST for manual testing
+export async function GET(req: NextRequest) { return handleReport(req) }
+export async function POST(req: NextRequest) { return handleReport(req) }
+
+async function handleReport(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

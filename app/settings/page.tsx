@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 
 type InvestorRow = {
@@ -20,21 +20,51 @@ type EdgarPreview = {
   filingCount: number
 }
 
-function useBackfillPoller(id: number | null, onDone: () => void) {
-  useEffect(() => {
-    if (!id) return
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/investors/${id}`)
+// Drives the backfill loop client-side: calls /backfill-step for each quarter
+// until done. Much more reliable than server-to-server chaining.
+function useBackfillDriver(
+  investorId: number,
+  initialStatus: string,
+  onProgress: (quartersDone: number) => void,
+  onDone: () => void,
+  onError: () => void,
+) {
+  // activeRef prevents React strict-mode double-fire from running two loops
+  const activeRef = useRef(false)
+
+  const run = useCallback(async (startQuarter?: string) => {
+    if (activeRef.current) return
+    activeRef.current = true
+    let nextQuarter = startQuarter
+    try {
+      while (true) {
+        const res = await fetch(`/api/investors/${investorId}/backfill-step`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quarter: nextQuarter }),
+        })
+        if (!res.ok) { onError(); return }
         const data = await res.json()
-        if (data.backfill_status === 'done' || data.backfill_status === 'error') {
-          clearInterval(interval)
-          onDone()
-        }
-      } catch { clearInterval(interval) }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [id, onDone])
+        onProgress(data.quartersDone ?? 0)
+        if (data.done || !data.nextQuarter) { onDone(); return }
+        nextQuarter = data.nextQuarter
+      }
+    } catch {
+      onError()
+    } finally {
+      activeRef.current = false
+    }
+  }, [investorId, onProgress, onDone, onError])
+
+  // Auto-start for investors that were already 'running' when the page loaded
+  useEffect(() => {
+    if (initialStatus === 'running') {
+      run()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return { run }
 }
 
 function BackfillBadge({ status, done }: { status: string; done: number }) {
@@ -99,14 +129,17 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
   const [displayNameEn, setDisplayNameEn] = useState(investor.name_en)
   const [displayInstitution, setDisplayInstitution] = useState(investor.institution)
 
-  const refresh = useCallback(async () => {
-    const res = await fetch(`/api/investors/${investor.id}`)
-    const data = await res.json()
-    setStatus(data.backfill_status)
-    setDone(data.backfill_quarters_done)
-  }, [investor.id])
+  const handleProgress = useCallback((quartersDone: number) => setDone(quartersDone), [])
+  const handleDone = useCallback(() => setStatus('done'), [])
+  const handleDriverError = useCallback(() => setStatus('error'), [])
 
-  useBackfillPoller(status === 'running' ? investor.id : null, refresh)
+  const { run: runBackfill } = useBackfillDriver(
+    investor.id,
+    investor.backfill_status, // initial status at mount — drives auto-start
+    handleProgress,
+    handleDone,
+    handleDriverError,
+  )
 
   async function handleDelete() {
     setDeleting(true)
@@ -226,7 +259,7 @@ function InvestorItem({ investor, onDelete }: { investor: InvestorRow; onDelete:
 
       <div className="flex items-center gap-2 flex-shrink-0">
         {(status === 'error' || status === 'running') && (
-          <RetryButton investorId={investor.id} onRetry={() => { setStatus('running'); setDone(0) }} />
+          <RetryButton investorId={investor.id} onRetry={() => { setStatus('running'); setDone(0); runBackfill() }} />
         )}
         <button
           onClick={startEdit}

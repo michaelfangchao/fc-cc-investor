@@ -1,5 +1,5 @@
 // POST /api/investors/add — create a new investor and kick off backfill
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db, investors } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 
@@ -22,24 +22,12 @@ export async function POST(req: NextRequest) {
     name_cn,
     name_en: name_en || name_cn,
     institution,
-    backfill_status: 'idle',
+    backfill_status: 'running',
     backfill_quarters_done: 0,
   }).returning()
 
-  // Fire backfill chain — after() ensures Vercel keeps the function alive
-  // until the fetch completes (plain non-awaited fetch is killed with the response).
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
-  if (baseUrl) {
-    after(() =>
-      fetch(`${baseUrl}/api/investors/init/${cik}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-          'Content-Type': 'application/json',
-        },
-      }).catch(err => console.error('backfill fire error:', err))
-    )
-  }
+  // Backfill is now driven client-side via /api/investors/[id]/backfill-step.
+  // The settings page starts the loop after this response is received.
 
   return NextResponse.json({ ok: true, investor })
 }
