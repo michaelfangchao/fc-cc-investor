@@ -68,7 +68,7 @@ function OverallInsights({ insights, investors, currentQuarter, topBuys2Qtr }: {
               return (
                 <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-1.5 group">
                   <span className="text-xs text-gray-400 w-4 font-mono flex-shrink-0">{i + 1}</span>
-                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-emerald-700 transition-colors w-12 flex-shrink-0">{item.ticker}</span>
+                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-emerald-700 transition-colors w-16 flex-shrink-0 truncate overflow-hidden">{item.ticker}</span>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color.bg }} />
                   <span className="text-xs text-gray-500 truncate flex-1">{item.investorName}</span>
                   <span className="text-xs font-semibold text-emerald-600 font-mono whitespace-nowrap flex-shrink-0">{item.maxPct.toFixed(1)}%</span>
@@ -92,7 +92,7 @@ function OverallInsights({ insights, investors, currentQuarter, topBuys2Qtr }: {
               return (
                 <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-1.5 group">
                   <span className="text-xs text-gray-400 w-4 font-mono flex-shrink-0">{i + 1}</span>
-                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-red-600 transition-colors w-12 flex-shrink-0">{item.ticker}</span>
+                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-red-600 transition-colors w-16 flex-shrink-0 truncate overflow-hidden">{item.ticker}</span>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color.bg }} />
                   <span className="text-xs text-gray-500 truncate flex-1">{item.investorName}</span>
                   <span className="text-xs font-semibold text-red-500 font-mono whitespace-nowrap flex-shrink-0">-{item.maxPctChange.toFixed(0)}%</span>
@@ -112,7 +112,7 @@ function OverallInsights({ insights, investors, currentQuarter, topBuys2Qtr }: {
             {insights.consensus.length === 0 && <p className="text-xs text-gray-400">暂无共识持仓</p>}
             {insights.consensus.map(item => (
               <Link key={item.ticker} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-2 group">
-                <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-purple-700 transition-colors w-16">{item.ticker}</span>
+                <span className="font-mono font-bold text-sm text-gray-900 group-hover:text-purple-700 transition-colors w-16 flex-shrink-0 truncate overflow-hidden">{item.ticker}</span>
                 <div className="flex items-center gap-0.5 flex-1">
                   {item.investorIds.map(invId => {
                     const inv = investors.find(i => i.id === invId)
@@ -149,7 +149,7 @@ function OverallInsights({ insights, investors, currentQuarter, topBuys2Qtr }: {
               return (
                 <Link key={`${item.investorCik}-${item.ticker}`} href={`/stock/${encodeURIComponent(item.ticker)}`} className="flex items-center gap-1.5 group">
                   <span className="text-xs text-gray-400 w-4 font-mono flex-shrink-0">{i + 1}</span>
-                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-blue-700 transition-colors w-12 flex-shrink-0">{item.ticker}</span>
+                  <span className="font-mono font-bold text-xs text-gray-900 group-hover:text-blue-700 transition-colors w-16 flex-shrink-0 truncate overflow-hidden">{item.ticker}</span>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color.bg }} />
                   <span className="text-xs text-gray-500 truncate flex-1">{item.investorName}</span>
                   <span className="text-xs font-semibold text-blue-600 font-mono whitespace-nowrap flex-shrink-0">{item.pctOfPortfolio.toFixed(1)}%</span>
